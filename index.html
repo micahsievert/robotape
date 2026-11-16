@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VEX V5 Match Reviewer & Maneuver Tagger</title>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body class="dark-theme">
+  <!-- Top Navigation Bar -->
+  <header class="app-header">
+    <div class="header-left">
+      <div class="logo">
+        <span class="logo-icon">🤖</span>
+        <div class="logo-text">
+          <h1>VEX V5 Match Reviewer</h1>
+          <span class="subtitle">Maneuver & Success Analysis Tool</span>
+        </div>
+      </div>
+      <div class="match-selector-bar">
+        <label for="matchSelect">Active Match:</label>
+        <select id="matchSelect" class="match-select">
+          <!-- Populated dynamically -->
+        </select>
+        <input type="text" id="matchNameInput" class="match-name-input" placeholder="e.g. Match Q12 - Blue Alliance" title="Rename current match">
+        
+        <button id="matchMetaBtn" class="btn btn-secondary btn-sm" title="Edit Match Metadata (Scores, Teams, Rank, SP)">
+          📋 Match Info
+        </button>
+        <button id="autonReviewBtn" class="btn btn-secondary btn-sm" title="Autonomous Performance Analysis & Error Review">
+          🎯 Auton Review
+        </button>
+
+        <button id="newMatchBtn" class="btn btn-secondary btn-sm" title="Create a new match session">
+          <span>+ New Match</span>
+        </button>
+        <button id="deleteMatchBtn" class="btn btn-ghost btn-sm btn-icon" title="Delete current match" aria-label="Delete Match">
+          🗑️
+        </button>
+      </div>
+    </div>
+
+    <div class="header-right">
+      <div class="header-actions">
+        <!-- Real-Time Auto-Save Status Badge -->
+        <div id="autoSaveBadge" class="autosave-badge" title="All changes are automatically saved in real time to local storage">
+          <span id="autoSaveDot" class="autosave-dot"></span>
+          <span id="autoSaveText">Auto-saved</span>
+        </div>
+
+        <button id="settingsBtn" class="btn btn-secondary btn-sm" title="Configure Activities and Success Rating Scale">
+          ⚙️ Settings
+        </button>
+        <button id="shortcutsBtn" class="btn btn-ghost btn-sm" title="Keyboard Shortcuts Cheat Sheet (Press ?)">
+          <span class="kbd-hint">?</span> Shortcuts
+        </button>
+        <label class="btn btn-secondary btn-sm file-label" title="Upload and restore match maneuvers and stats from a CSV file">
+          📂 Import CSV
+          <input type="file" id="importCsvHeaderInput" accept=".csv" style="display: none;">
+        </label>
+        <button id="exportCsvBtn" class="btn btn-primary btn-sm" title="Export this match to CSV file">
+          📥 Export CSV
+        </button>
+        <div class="dropdown">
+          <button id="moreActionsBtn" class="btn btn-ghost btn-sm btn-icon" title="More Options">
+            ⋮
+          </button>
+          <div id="moreActionsMenu" class="dropdown-menu hidden">
+            <button id="exportAllCsvBtn" class="dropdown-item">📊 Export All 8 Matches Maneuvers CSV</button>
+            <button id="exportMatchSummaryCsvBtn" class="dropdown-item">📋 Export 8-Match Summary CSV</button>
+            <label class="dropdown-item file-label">
+              📂 Import from CSV
+              <input type="file" id="importCsvMenuInput" accept=".csv" style="display: none;">
+            </label>
+            <button id="exportJsonBtn" class="dropdown-item">💾 Backup Project (JSON)</button>
+            <label class="dropdown-item file-label">
+              📂 Restore Project (JSON)
+              <input type="file" id="importJsonInput" accept=".json" style="display:none;">
+            </label>
+            <hr class="dropdown-divider">
+            <button id="menuSettingsBtn" class="dropdown-item">⚙️ Settings & Scales</button>
+            <button id="clearMatchDataBtn" class="dropdown-item text-danger">⚠️ Clear Actions in Match</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Application Body -->
+  <main class="app-container">
+    <!-- Left Column: Video Deck & Controls -->
+    <section class="video-section">
+      <!-- Video Drop Zone & Player Container -->
+      <div class="video-container" id="videoDropZone">
+        <!-- Overlay when no video is loaded -->
+        <div id="emptyDropPrompt" class="drop-prompt">
+          <div class="drop-icon">🎬</div>
+          <h2>Drop your match video here</h2>
+          <p>Supports MP4, MOV, WebM, M4V (Processed 100% locally in your browser)</p>
+          <div class="drop-prompt-actions">
+            <label class="btn btn-primary file-browse-btn">
+              Choose Video File
+              <input type="file" id="videoFileInput" accept="video/*" style="display: none;">
+            </label>
+            <label class="btn btn-secondary file-browse-btn file-label" title="Upload a previously saved CSV to restore match stats and maneuvers">
+              📂 Load Saved CSV
+              <input type="file" id="importCsvDropInput" accept=".csv" style="display: none;">
+            </label>
+          </div>
+          <span class="file-hint">Drop your match video (.mp4, .mov) or a previous analysis (.csv) here anytime</span>
+        </div>
+
+        <video id="videoPlayer" class="video-player hidden" preload="auto" playsinline>
+          Your browser does not support HTML5 video.
+        </video>
+
+        <!-- Current Video Floating Badge -->
+        <div id="videoFileInfo" class="video-info-badge hidden">
+          <span id="videoFileName">No video loaded</span>
+          <label class="btn btn-ghost btn-xs switch-video-btn" title="Change video">
+            Change
+            <input type="file" id="switchVideoInput" accept="video/*" style="display: none;">
+          </label>
+        </div>
+      </div>
+
+      <!-- Time & Frame Display Bar -->
+      <div class="playback-readout-bar">
+        <div class="time-readout">
+          <span id="currentTimeDisplay" class="mono-time">00:00.000</span>
+          <span class="time-sep">/</span>
+          <span id="durationDisplay" class="mono-time text-muted">00:00.000</span>
+        </div>
+        <div class="frame-readout">
+          <span class="frame-label">Frame:</span>
+          <span id="currentFrameDisplay" class="mono-frame">0</span>
+          <div class="fps-selector">
+            <label for="fpsSelect">FPS:</label>
+            <select id="fpsSelect" class="mini-select">
+              <option value="30" selected>30 fps</option>
+              <option value="60">60 fps</option>
+              <option value="24">24 fps</option>
+              <option value="59.94">59.94 fps</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- Interactive Timeline Scrubber & Marker Overlay -->
+      <div class="timeline-container">
+        <div class="timeline-track-wrapper" id="timelineTrackWrapper">
+          <div class="timeline-track" id="timelineTrack">
+            <!-- Saved actions blocks rendered here dynamically -->
+            <div id="timelineActionsOverlay" class="timeline-actions-overlay"></div>
+            <!-- In/Out Selection Range Highlight -->
+            <div id="timelineRangeHighlight" class="timeline-range-highlight hidden"></div>
+            <!-- In Marker Pin -->
+            <div id="timelineInMarker" class="timeline-marker in-marker hidden" title="Start Time (In-point)"></div>
+            <!-- Out Marker Pin -->
+            <div id="timelineOutMarker" class="timeline-marker out-marker hidden" title="End Time (Out-point)"></div>
+            <!-- Current Playhead Scrubber -->
+            <div id="timelinePlayhead" class="timeline-playhead"></div>
+          </div>
+        </div>
+        <!-- Hover tooltip on timeline -->
+        <div id="timelineTooltip" class="timeline-tooltip hidden">00:00.000</div>
+      </div>
+
+      <!-- Video Transport Controls Deck -->
+      <div class="transport-deck">
+        <div class="transport-row main-controls">
+          <div class="step-controls-left">
+            <button id="jumpBack5sBtn" class="btn btn-control" title="Jump backward 5s (Shift+Left)">-5s</button>
+            <button id="jumpBack1sBtn" class="btn btn-control" title="Jump backward 1s (J)">-1s</button>
+            <button id="stepBackFrameBtn" class="btn btn-control" title="Step backward 1 frame (Left Arrow or ,)">❮ Frame</button>
+          </div>
+
+          <div class="playback-center">
+            <button id="playPauseBtn" class="btn btn-play-pause" title="Play / Pause (Space)">
+              <span id="playPauseIcon">▶</span>
+            </button>
+          </div>
+
+          <div class="step-controls-right">
+            <button id="stepForwardFrameBtn" class="btn btn-control" title="Step forward 1 frame (Right Arrow or .)">Frame ❯</button>
+            <button id="jumpFwd1sBtn" class="btn btn-control" title="Jump forward 1s (L)">+1s</button>
+            <button id="jumpFwd5sBtn" class="btn btn-control" title="Jump forward 5s (Shift+Right)">+5s</button>
+          </div>
+        </div>
+
+        <div class="transport-row secondary-controls">
+          <!-- In / Out Markers Controls -->
+          <div class="marker-controls">
+            <button id="setInBtn" class="btn btn-marker btn-in" title="Set Action Start Time (Press [ or I)">
+              <span class="marker-kbd">[</span> Set Start
+            </button>
+            <button id="setOutBtn" class="btn btn-marker btn-out" title="Set Action End Time (Press ] or O)">
+              <span class="marker-kbd">]</span> Set End
+            </button>
+            <button id="previewSegmentBtn" class="btn btn-secondary btn-sm" title="Preview selected interval">
+              🔁 Loop Clip
+            </button>
+            <button id="clearMarkersBtn" class="btn btn-ghost btn-sm" title="Clear In/Out markers">
+              ✕ Clear
+            </button>
+          </div>
+
+          <!-- Playback Speed Selector -->
+          <div class="speed-controls">
+            <span class="speed-label">Speed:</span>
+            <div class="speed-buttons">
+              <button class="btn btn-speed" data-speed="0.25">0.25x</button>
+              <button class="btn btn-speed" data-speed="0.5">0.5x</button>
+              <button class="btn btn-speed active" data-speed="1.0">1x</button>
+              <button class="btn btn-speed" data-speed="1.5">1.5x</button>
+              <button class="btn btn-speed" data-speed="2.0">2x</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Match Overview & Alliance Meta Banner -->
+      <div class="match-meta-banner" id="matchMetaBanner">
+        <div class="meta-banner-pill" id="metaBannerResultPill" title="Click to view/edit match scores and outcome">
+          <span class="meta-pill-icon">🏆</span>
+          <span class="meta-pill-label">Match:</span>
+          <span class="meta-pill-val" id="metaBannerResultVal">Not Recorded</span>
+        </div>
+        <div class="meta-banner-pill" id="metaBannerAutonPill" title="Click to view/edit autonomous points & efficiency">
+          <span class="meta-pill-icon">🎯</span>
+          <span class="meta-pill-label">Auton:</span>
+          <span class="meta-pill-val" id="metaBannerAutonVal">Not Recorded</span>
+        </div>
+        <div class="meta-banner-pill" id="metaBannerAlliancePill" title="Click to view/edit alliance teams & stats">
+          <span class="meta-pill-icon">🤝</span>
+          <span class="meta-pill-label">Teams:</span>
+          <span class="meta-pill-val" id="metaBannerAllianceVal">—</span>
+        </div>
+      </div>
+
+      <!-- Quick Summary Stats Card -->
+      <div class="stats-card">
+        <div class="stats-header">
+          <h3>Match Performance Summary</h3>
+          <span id="statsMatchName" class="badge">Match 1</span>
+        </div>
+        <div class="stats-grid">
+          <div class="stat-box">
+            <span class="stat-value" id="statTotalCount">0</span>
+            <span class="stat-label">Total Maneuvers</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-value text-success" id="statSuccessRate">0%</span>
+            <span class="stat-label">Success Rate</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-value" id="statTotalDuration">0.0s</span>
+            <span class="stat-label">Tag Time Logged</span>
+          </div>
+          <div class="stat-box">
+            <span class="stat-value" id="statTopActivity">—</span>
+            <span class="stat-label">Most Frequent Action</span>
+          </div>
+        </div>
+        <!-- Progress distribution bar -->
+        <div class="activity-distribution-bar" id="activityDistributionBar" title="Maneuver Distribution">
+          <!-- Filled dynamically with activity colors -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Right Column: Tagging Form & Logged Actions Table -->
+    <section class="tagging-section">
+      <!-- Tagging Form Card -->
+      <div class="card tagging-card">
+        <div class="card-header">
+          <h2>Record Maneuver</h2>
+          <div class="tagging-header-controls">
+            <label class="auto-chain-toggle" title="Automatically set next Start Time to the End Time of what you just saved">
+              <input type="checkbox" id="autoChainCheckbox" checked>
+              <span>🔗 Chain Next Start</span>
+            </label>
+            <span class="badge badge-info" id="currentIntervalBadge">No Interval Selected</span>
+          </div>
+        </div>
+
+        <form id="actionForm" class="action-form">
+          <!-- Interval Display and Fine-Tuning -->
+          <div class="form-row interval-row">
+            <div class="form-group flex-1">
+              <label for="startTimeInput">
+                Start Time:
+                <button type="button" id="useCurrentAsStartBtn" class="btn-link" title="Use current video playhead time">Use Current</button>
+              </label>
+              <div class="input-with-button">
+                <input type="text" id="startTimeInput" class="form-input mono" placeholder="00:00.000" required>
+                <button type="button" id="seekStartBtn" class="btn btn-ghost btn-sm btn-icon" title="Seek to Start Time">🎯</button>
+              </div>
+            </div>
+
+            <div class="form-group flex-1">
+              <label for="endTimeInput">
+                End Time:
+                <button type="button" id="useCurrentAsEndBtn" class="btn-link" title="Use current video playhead time">Use Current</button>
+              </label>
+              <div class="input-with-button">
+                <input type="text" id="endTimeInput" class="form-input mono" placeholder="00:00.000" required>
+                <button type="button" id="seekEndBtn" class="btn btn-ghost btn-sm btn-icon" title="Seek to End Time">🎯</button>
+              </div>
+            </div>
+
+            <div class="form-group duration-group">
+              <label>Duration:</label>
+              <span id="intervalDurationDisplay" class="duration-badge">0.00s</span>
+            </div>
+          </div>
+
+          <!-- Activity Type Dropdown -->
+          <div class="form-group">
+            <div class="label-with-action">
+              <label for="activitySelect">Activity / Maneuver Type:</label>
+              <button type="button" id="openActivityModalBtn" class="btn-link">+ Customize Types</button>
+            </div>
+            <select id="activitySelect" class="form-select" required>
+              <!-- Filled dynamically from activities list -->
+            </select>
+          </div>
+
+          <!-- Success Rating Dropdown & Selector -->
+          <div class="form-group">
+            <div class="label-with-action">
+              <label for="ratingSelect">Success Rating:</label>
+              <button type="button" id="openRatingSettingsBtn" class="btn-link">⚙️ Scale Settings</button>
+            </div>
+            <div class="rating-button-group" id="ratingButtonGroup">
+              <!-- Dynamically populated from active rating scale -->
+            </div>
+            <select id="ratingSelect" class="form-select hidden">
+              <!-- Dynamically populated from active rating scale -->
+            </select>
+          </div>
+
+          <!-- Notes Textbox & Quick Tags -->
+          <div class="form-group">
+            <label for="notesInput">Notes & Observations:</label>
+            <textarea id="notesInput" class="form-textarea" rows="2" placeholder="e.g. Driver aligned well, quick intake, stuck briefly on wall stake, clean cycle..."></textarea>
+            <!-- Quick Chips / Tags -->
+            <div class="quick-tags" id="quickTagsContainer">
+              <span class="quick-tag" data-tag="Clean cycle">Clean cycle</span>
+              <span class="quick-tag" data-tag="Misaligned">Misaligned</span>
+              <span class="quick-tag" data-tag="Intake jam">Intake jam</span>
+              <span class="quick-tag" data-tag="Great defense">Great defense</span>
+              <span class="quick-tag" data-tag="Tipped / off-balance">Tipped</span>
+              <span class="quick-tag" data-tag="Opponent pinned">Opponent pinned</span>
+              <span class="quick-tag" data-tag="Auton line touch">Auton touch</span>
+              <span class="quick-tag" data-tag="Climb successful">Climb success</span>
+            </div>
+          </div>
+
+          <!-- Submit & Clear Form Buttons -->
+          <div class="form-actions">
+            <button type="submit" id="saveActionBtn" class="btn btn-primary btn-lg flex-1">
+              💾 Save Maneuver <span class="kbd-hint">Enter</span>
+            </button>
+            <button type="button" id="resetFormBtn" class="btn btn-secondary">
+              Reset Form
+            </button>
+          </div>
+        </form>
+      </div>
+
+      <!-- Logged Maneuvers List Card -->
+      <div class="card table-card flex-1">
+        <div class="card-header table-header">
+          <div class="table-title">
+            <h2>Logged Maneuvers</h2>
+            <span id="actionsCountBadge" class="badge">0 actions</span>
+          </div>
+
+          <!-- Filter & Search Controls -->
+          <div class="table-filters">
+            <select id="filterActivitySelect" class="filter-select">
+              <option value="ALL">All Activities</option>
+            </select>
+            <select id="filterRatingSelect" class="filter-select">
+              <option value="ALL">All Ratings</option>
+              <option value="Full Success">🟢 Full Success</option>
+              <option value="Partial Success">🟡 Partial</option>
+              <option value="Neutral / Inconsequential">⚪ Neutral</option>
+              <option value="Failed / Missed">🟠 Failed</option>
+              <option value="Disaster / Penalty">🔴 Penalty</option>
+            </select>
+            <input type="text" id="searchNotesInput" class="search-input" placeholder="Search notes...">
+          </div>
+        </div>
+
+        <div class="table-wrapper">
+          <table class="actions-table" id="actionsTable">
+            <thead>
+              <tr>
+                <th width="40">#</th>
+                <th width="140">Time (Start - End)</th>
+                <th width="65">Dur</th>
+                <th width="150">Activity</th>
+                <th width="130">Rating</th>
+                <th>Notes</th>
+                <th width="90" class="text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="actionsTableBody">
+              <!-- Actions rendered here dynamically -->
+            </tbody>
+          </table>
+
+          <div id="emptyTableMessage" class="empty-table-state">
+            <p>No maneuvers logged for this match yet.</p>
+            <p class="subtext">Use <kbd>[</kbd> to set start, <kbd>]</kbd> to set end, pick an activity, and press <kbd>Enter</kbd> to save!</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- MODALS -->
+
+  <!-- 1. Unified Settings Modal (Activities, Success Scale & Auto-Save) -->
+  <div id="settingsModal" class="modal-backdrop hidden">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <div>
+          <h3>⚙️ Settings & Configuration</h3>
+          <p class="modal-subtitle">Customize activities, success rating scale, and review auto-save status</p>
+        </div>
+        <button class="modal-close-btn" data-close="settingsModal">✕</button>
+      </div>
+
+      <!-- Settings Navigation Tabs -->
+      <div class="settings-tabs">
+        <button type="button" class="settings-tab-btn active" data-tab="tabActivities">
+          🏷️ Activities (<span id="settingsActivityCount">10</span>)
+        </button>
+        <button type="button" class="settings-tab-btn" data-tab="tabRatings">
+          ⭐ Success Scale (<span id="settingsRatingCount">5</span>)
+        </button>
+        <button type="button" class="settings-tab-btn" data-tab="tabAutoSave">
+          💾 Auto-Save & Storage
+        </button>
+      </div>
+
+      <div class="modal-body settings-modal-body">
+        <!-- TAB 1: ACTIVITIES -->
+        <div id="tabActivities" class="settings-tab-content">
+          <p class="modal-desc">Define the maneuvers your robot executes (e.g. Autonomous, Scoring, Defense, Climbing, Descoring).</p>
+          
+          <!-- Add New Activity Row -->
+          <div class="add-item-row">
+            <input type="text" id="newActivityNameInput" class="form-input flex-1" placeholder="New Activity Name (e.g. Ring Descore, High Hang...)">
+            <input type="color" id="newActivityColorInput" class="color-picker-input" value="#3b82f6" title="Badge Color">
+            <button id="addActivityBtn" class="btn btn-primary">+ Add Activity</button>
+          </div>
+
+          <!-- Activity List -->
+          <div class="activity-list-container" id="activityListContainer">
+            <!-- Populated dynamically with inline edit & delete -->
+          </div>
+
+          <div class="tab-footer-actions">
+            <button id="restoreDefaultActivitiesBtn" class="btn btn-ghost btn-sm text-muted">↺ Restore VEX V5 Defaults</button>
+          </div>
+        </div>
+
+        <!-- TAB 2: SUCCESS RATING SCALE -->
+        <div id="tabRatings" class="settings-tab-content hidden">
+          <p class="modal-desc">Configure your rating scale. Pick a standard preset or customize individual tiers with custom labels, colors, and scoring weights.</p>
+          
+          <!-- Rating Scale Presets -->
+          <div class="preset-selector-box">
+            <span class="preset-label">Choose Preset:</span>
+            <div class="preset-buttons">
+              <button type="button" class="btn btn-preset active" data-preset="5-tier">5-Tier (Standard VEX)</button>
+              <button type="button" class="btn btn-preset" data-preset="3-tier">3-Tier (Simple)</button>
+              <button type="button" class="btn btn-preset" data-preset="1-5-numeric">1–5 (Numeric)</button>
+              <button type="button" class="btn btn-preset" data-preset="binary">Pass / Fail</button>
+            </div>
+          </div>
+
+          <!-- Rating Tiers List -->
+          <div class="rating-tier-header">
+            <span>Color</span>
+            <span class="flex-1">Rating Label</span>
+            <span>Success Weight</span>
+            <span>Actions</span>
+          </div>
+
+          <div class="rating-tier-container" id="ratingTierListContainer">
+            <!-- Populated dynamically -->
+          </div>
+
+          <!-- Add Custom Rating Tier Row -->
+          <div class="add-item-row add-rating-row">
+            <input type="color" id="newRatingColorInput" class="color-picker-input" value="#2ea043" title="Tier Color">
+            <input type="text" id="newRatingLabelInput" class="form-input flex-1" placeholder="New Tier Label (e.g. Near Miss, 10-Point Score...)">
+            <select id="newRatingWeightSelect" class="form-select mini-select-wide" title="Weight toward match success rate %">
+              <option value="1.0">100% (Full Success)</option>
+              <option value="0.75">75% (Strong)</option>
+              <option value="0.5" selected>50% (Partial)</option>
+              <option value="0.25">25% (Weak)</option>
+              <option value="0.0">0% (Failure)</option>
+            </select>
+            <button id="addRatingTierBtn" class="btn btn-primary btn-sm">+ Add Tier</button>
+          </div>
+
+          <div class="tab-footer-actions">
+            <button id="restoreDefaultRatingsBtn" class="btn btn-ghost btn-sm text-muted">↺ Restore Default 5-Tier Scale</button>
+          </div>
+        </div>
+
+        <!-- TAB 3: AUTO-SAVE & STORAGE -->
+        <div id="tabAutoSave" class="settings-tab-content hidden">
+          <div class="autosave-card">
+            <div class="autosave-card-header">
+              <span class="status-indicator-dot online"></span>
+              <h4>Auto-Save is Active in Real Time</h4>
+            </div>
+            <p class="modal-desc">
+              Every maneuver you record, timestamp you mark, note you draft, and custom setting you configure is automatically saved directly to your browser's persistent storage. You never need to worry about losing your review if you close the tab.
+            </p>
+          </div>
+
+          <div class="storage-stats-grid">
+            <div class="storage-stat-box">
+              <span class="storage-stat-num" id="storageMatchCount">1</span>
+              <span class="storage-stat-lbl">Active Matches</span>
+            </div>
+            <div class="storage-stat-box">
+              <span class="storage-stat-num" id="storageActionCount">0</span>
+              <span class="storage-stat-lbl">Total Maneuvers</span>
+            </div>
+            <div class="storage-stat-box">
+              <span class="storage-stat-num" id="storageDraftStatus">None</span>
+              <span class="storage-stat-lbl">Active In/Out Draft</span>
+            </div>
+            <div class="storage-stat-box">
+              <span class="storage-stat-num" id="storageSizeEstimate">~12 KB</span>
+              <span class="storage-stat-lbl">Local Storage Size</span>
+            </div>
+          </div>
+
+          <div class="storage-actions-block">
+            <h4>Data Backups</h4>
+            <div class="storage-btn-row">
+              <label class="btn btn-secondary btn-sm file-label">
+                📂 Import / Restore from CSV
+                <input type="file" id="importCsvSettingsInput" accept=".csv" style="display:none;">
+              </label>
+              <button id="backupJsonSettingsBtn" class="btn btn-secondary btn-sm">💾 Export Full Backup (JSON)</button>
+              <label class="btn btn-secondary btn-sm file-label">
+                📂 Import Backup (JSON)
+                <input type="file" id="importJsonSettingsInput" accept=".json" style="display:none;">
+              </label>
+              <button id="clearAllProjectDataBtn" class="btn btn-ghost btn-sm text-danger">⚠️ Reset Entire Project</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer-actions">
+        <span class="autosave-footer-note">✓ All settings save automatically in real time</span>
+        <button class="btn btn-primary" data-close="settingsModal">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2. Edit Action Modal -->
+  <div id="editActionModal" class="modal-backdrop hidden">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>Edit Maneuver</h3>
+        <button class="modal-close-btn" data-close="editActionModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="editActionForm">
+          <input type="hidden" id="editActionId">
+          <div class="form-row">
+            <div class="form-group flex-1">
+              <label for="editStartTimeInput">Start Time (MM:SS.mmm or s):</label>
+              <input type="text" id="editStartTimeInput" class="form-input mono" required>
+            </div>
+            <div class="form-group flex-1">
+              <label for="editEndTimeInput">End Time (MM:SS.mmm or s):</label>
+              <input type="text" id="editEndTimeInput" class="form-input mono" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label for="editActivitySelect">Activity:</label>
+            <select id="editActivitySelect" class="form-select" required></select>
+          </div>
+          <div class="form-group">
+            <label for="editRatingSelect">Rating:</label>
+            <select id="editRatingSelect" class="form-select" required>
+              <option value="Full Success">🟢 Full Success</option>
+              <option value="Partial Success">🟡 Partial Success</option>
+              <option value="Neutral / Inconsequential">⚪ Neutral / Inconsequential</option>
+              <option value="Failed / Missed">🟠 Failed / Missed</option>
+              <option value="Disaster / Penalty">🔴 Disaster / Penalty / Tipped</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="editNotesInput">Notes:</label>
+            <textarea id="editNotesInput" class="form-textarea" rows="3"></textarea>
+          </div>
+          <div class="modal-footer-actions">
+            <button type="button" class="btn btn-secondary" data-close="editActionModal">Cancel</button>
+            <button type="submit" class="btn btn-primary">Save Changes</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. Match Metadata Modal (Winner, Score, Teams, Rank, SP) -->
+  <div id="matchMetaModal" class="modal-backdrop hidden">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <div>
+          <h3>📋 Match Overview & Alliance Stats</h3>
+          <p class="modal-subtitle">Record score, outcome, partner & opponent stats (Rank, WP, AP, SP)</p>
+        </div>
+        <button class="modal-close-btn" data-close="matchMetaModal">✕</button>
+      </div>
+
+      <div class="modal-body settings-modal-body">
+        <!-- 1. Match Outcome & Scoring Row -->
+        <div class="meta-section-card">
+          <h4 class="meta-section-title">Match Outcome & Scoring</h4>
+          <div class="meta-grid-row">
+            <div class="form-group">
+              <label>Our Alliance:</label>
+              <div class="alliance-toggle-group">
+                <button type="button" class="btn btn-sm btn-alliance active-red" id="metaAllianceRedBtn" data-alliance="Red">🔴 Red Alliance</button>
+                <button type="button" class="btn btn-sm btn-alliance" id="metaAllianceBlueBtn" data-alliance="Blue">🔵 Blue Alliance</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Match Result:</label>
+              <div class="outcome-toggle-group">
+                <button type="button" class="btn btn-sm btn-outcome" id="metaOutcomeWinBtn" data-outcome="Win">🏆 Win</button>
+                <button type="button" class="btn btn-sm btn-outcome" id="metaOutcomeLossBtn" data-outcome="Loss">❌ Loss</button>
+                <button type="button" class="btn btn-sm btn-outcome" id="metaOutcomeTieBtn" data-outcome="Tie">🤝 Tie</button>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="metaOurScoreInput">Our Score:</label>
+              <input type="number" id="metaOurScoreInput" class="form-input mono" placeholder="0" min="0">
+            </div>
+
+            <div class="form-group">
+              <label for="metaOppScoreInput">Opponent Score:</label>
+              <input type="number" id="metaOppScoreInput" class="form-input mono" placeholder="0" min="0">
+            </div>
+          </div>
+
+          <div class="meta-grid-row" style="margin-top: 0.75rem;">
+            <div class="form-group flex-1">
+              <label for="metaAutonWinnerSelect">Autonomous Winner:</label>
+              <select id="metaAutonWinnerSelect" class="form-select">
+                <option value="None">Not Decided / None</option>
+                <option value="Our Alliance">Our Alliance (Won Auton Bonus)</option>
+                <option value="Opponents">Opponents (Won Auton Bonus)</option>
+                <option value="Tied">Tied (Split Auton Bonus)</option>
+              </select>
+            </div>
+            <div class="form-group flex-1 flex-center-checkbox">
+              <label class="checkbox-label">
+                <input type="checkbox" id="metaAwpCheckbox">
+                <span>Autonomous Win Point (AWP) Earned</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Teams & Stats Breakdown -->
+        <div class="meta-section-card">
+          <h4 class="meta-section-title">Teams & Tournament Stats</h4>
+          <div class="teams-stats-grid">
+            <!-- Partner Team -->
+            <div class="team-stat-card partner-card">
+              <div class="team-card-header">
+                <span class="team-badge partner-badge">Alliance Partner</span>
+              </div>
+              <div class="form-group">
+                <label for="metaPartnerNumberInput">Team #:</label>
+                <input type="text" id="metaPartnerNumberInput" class="form-input" placeholder="e.g. 8059B">
+              </div>
+              <div class="team-stats-inputs-row">
+                <div class="form-group">
+                  <label for="metaPartnerRankInput" title="End of Day Rank">Rank:</label>
+                  <input type="number" id="metaPartnerRankInput" class="form-input mono" placeholder="Rank">
+                </div>
+                <div class="form-group">
+                  <label for="metaPartnerWpInput" title="Win Points">WP:</label>
+                  <input type="number" id="metaPartnerWpInput" class="form-input mono" placeholder="WP">
+                </div>
+                <div class="form-group">
+                  <label for="metaPartnerApInput" title="Autonomous Points">AP:</label>
+                  <input type="number" id="metaPartnerApInput" class="form-input mono" placeholder="AP">
+                </div>
+                <div class="form-group">
+                  <label for="metaPartnerSpInput" title="Strength Points">SP:</label>
+                  <input type="number" id="metaPartnerSpInput" class="form-input mono" placeholder="SP">
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="metaPartnerNotesInput">Partner Notes:</label>
+                <textarea id="metaPartnerNotesInput" class="form-textarea" rows="2" placeholder="Driver ability, cycle speed, reliability..."></textarea>
+              </div>
+            </div>
+
+            <!-- Opponent Team 1 -->
+            <div class="team-stat-card opp-card">
+              <div class="team-card-header">
+                <span class="team-badge opp-badge">Opponent 1</span>
+              </div>
+              <div class="form-group">
+                <label for="metaOpp1NumberInput">Team #:</label>
+                <input type="text" id="metaOpp1NumberInput" class="form-input" placeholder="e.g. 229V">
+              </div>
+              <div class="team-stats-inputs-row">
+                <div class="form-group">
+                  <label for="metaOpp1RankInput" title="End of Day Rank">Rank:</label>
+                  <input type="number" id="metaOpp1RankInput" class="form-input mono" placeholder="Rank">
+                </div>
+                <div class="form-group">
+                  <label for="metaOpp1WpInput" title="Win Points">WP:</label>
+                  <input type="number" id="metaOpp1WpInput" class="form-input mono" placeholder="WP">
+                </div>
+                <div class="form-group">
+                  <label for="metaOpp1ApInput" title="Autonomous Points">AP:</label>
+                  <input type="number" id="metaOpp1ApInput" class="form-input mono" placeholder="AP">
+                </div>
+                <div class="form-group">
+                  <label for="metaOpp1SpInput" title="Strength Points">SP:</label>
+                  <input type="number" id="metaOpp1SpInput" class="form-input mono" placeholder="SP">
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="metaOpp1NotesInput">Opponent 1 Notes:</label>
+                <textarea id="metaOpp1NotesInput" class="form-textarea" rows="2" placeholder="Strengths, defensive habits, weaknesses..."></textarea>
+              </div>
+            </div>
+
+            <!-- Opponent Team 2 -->
+            <div class="team-stat-card opp-card">
+              <div class="team-card-header">
+                <span class="team-badge opp-badge">Opponent 2</span>
+              </div>
+              <div class="form-group">
+                <label for="metaOpp2NumberInput">Team #:</label>
+                <input type="text" id="metaOpp2NumberInput" class="form-input" placeholder="e.g. 400X">
+              </div>
+              <div class="team-stats-inputs-row">
+                <div class="form-group">
+                  <label for="metaOpp2RankInput" title="End of Day Rank">Rank:</label>
+                  <input type="number" id="metaOpp2RankInput" class="form-input mono" placeholder="Rank">
+                </div>
+                <div class="form-group">
+                  <label for="metaOpp2WpInput" title="Win Points">WP:</label>
+                  <input type="number" id="metaOpp2WpInput" class="form-input mono" placeholder="WP">
+                </div>
+                <div class="form-group">
+                  <label for="metaOpp2ApInput" title="Autonomous Points">AP:</label>
+                  <input type="number" id="metaOpp2ApInput" class="form-input mono" placeholder="AP">
+                </div>
+                <div class="form-group">
+                  <label for="metaOpp2SpInput" title="Strength Points">SP:</label>
+                  <input type="number" id="metaOpp2SpInput" class="form-input mono" placeholder="SP">
+                </div>
+              </div>
+              <div class="form-group">
+                <label for="metaOpp2NotesInput">Opponent 2 Notes:</label>
+                <textarea id="metaOpp2NotesInput" class="form-textarea" rows="2" placeholder="Autonomous routine, hang ability, push resistance..."></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. General Match Notes -->
+        <div class="meta-section-card">
+          <div class="form-group">
+            <label for="metaGeneralNotesInput">Match Strategy & Drive Team Takeaways:</label>
+            <textarea id="metaGeneralNotesInput" class="form-textarea" rows="3" placeholder="Alliance synergy, match flow, what we did well, what to adjust for the next match..."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer-actions">
+        <span class="autosave-footer-note">✓ Auto-saves instantly</span>
+        <button class="btn btn-primary" data-close="matchMetaModal">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 4. Autonomous Review & Breakdown Modal -->
+  <div id="autonReviewModal" class="modal-backdrop hidden">
+    <div class="modal-dialog modal-lg">
+      <div class="modal-header">
+        <div>
+          <h3>🎯 Autonomous Performance & Breakdown</h3>
+          <p class="modal-subtitle">Compare coded theoretical max vs actual points scored and diagnose errors</p>
+        </div>
+        <button class="modal-close-btn" data-close="autonReviewModal">✕</button>
+      </div>
+
+      <div class="modal-body settings-modal-body">
+        <!-- Live Efficiency Banner -->
+        <div class="auton-efficiency-card">
+          <div class="auton-card-top">
+            <div>
+              <span class="auton-card-label">Autonomous Execution Efficiency</span>
+              <div class="auton-big-score">
+                <span id="autonEfficiencyDisplay" class="auton-stat-pct">0%</span>
+                <span id="autonPointsBreakdownDisplay" class="auton-stat-pts">(0 / 0 points)</span>
+              </div>
+            </div>
+            <div class="auton-status-pill" id="autonBonusStatusPill">
+              No Bonus
+            </div>
+          </div>
+          <div class="auton-progress-track">
+            <div id="autonProgressBar" class="auton-progress-bar" style="width: 0%;"></div>
+          </div>
+        </div>
+
+        <!-- Routine & Positions -->
+        <div class="meta-section-card">
+          <div class="meta-grid-row">
+            <div class="form-group flex-1">
+              <label for="autonRoutineNameInput">Routine Name / Code Version:</label>
+              <input type="text" id="autonRoutineNameInput" class="form-input" placeholder="e.g. Left 5-Ring + WinPoint Touch">
+            </div>
+            <div class="form-group">
+              <label for="autonStartPositionSelect">Starting Field Position:</label>
+              <select id="autonStartPositionSelect" class="form-select">
+                <option value="Red Left">Red Left</option>
+                <option value="Red Right">Red Right</option>
+                <option value="Blue Left">Blue Left</option>
+                <option value="Blue Right">Blue Right</option>
+                <option value="Skills Position">Skills Starting Tile</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="meta-grid-row" style="margin-top: 0.75rem;">
+            <div class="form-group">
+              <label for="autonCodedMaxInput">Coded Theoretical Max Points:</label>
+              <input type="number" id="autonCodedMaxInput" class="form-input mono" placeholder="e.g. 24" min="0">
+              <span class="field-hint">Points scored if routine runs 100% clean</span>
+            </div>
+            <div class="form-group">
+              <label for="autonActualPointsInput">Actual Points Scored:</label>
+              <input type="number" id="autonActualPointsInput" class="form-input mono" placeholder="e.g. 16" min="0">
+              <span class="field-hint">Official points scored in autonomous</span>
+            </div>
+            <div class="form-group">
+              <label for="autonBonusWonSelect">Auton Bonus:</label>
+              <select id="autonBonusWonSelect" class="form-select">
+                <option value="Won">🏆 Won Bonus</option>
+                <option value="Tied">🤝 Tied</option>
+                <option value="Lost">❌ Lost Bonus</option>
+              </select>
+            </div>
+            <div class="form-group flex-center-checkbox">
+              <label class="checkbox-label">
+                <input type="checkbox" id="autonAwpCheckbox">
+                <span>AWP Secured</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- Root Cause / Issue Tagging -->
+        <div class="meta-section-card">
+          <h4 class="meta-section-title">Root Cause & Issue Analysis (Select all that occurred):</h4>
+          <div class="auton-issue-tags" id="autonIssueTagsContainer">
+            <button type="button" class="btn-issue-tag" data-tag="Clean Flawless Run">✨ Clean Flawless Run</button>
+            <button type="button" class="btn-issue-tag" data-tag="Starting Alignment Off">📐 Alignment Off at Start</button>
+            <button type="button" class="btn-issue-tag" data-tag="Tile Friction / Field Drift">🧱 Tile Friction / Drift</button>
+            <button type="button" class="btn-issue-tag" data-tag="Odometry / Inertial Slip">🔄 Odometry / Inertial Slip</button>
+            <button type="button" class="btn-issue-tag" data-tag="Partner Collision / Line Touch">🤝 Partner Collision</button>
+            <button type="button" class="btn-issue-tag" data-tag="Opponent Interference / Defense">🛡️ Opponent Interference</button>
+            <button type="button" class="btn-issue-tag" data-tag="Intake / Roller Jam">⚙️ Intake / Roller Jam</button>
+            <button type="button" class="btn-issue-tag" data-tag="Ring / Triball Bounce-out">🏀 Game Element Bounce-out</button>
+            <button type="button" class="btn-issue-tag" data-tag="Ran Out of Time (Timeout)">⏱️ Ran Out of Time</button>
+            <button type="button" class="btn-issue-tag" data-tag="Software Bug / Stuck Loop">🐛 Code / PID Bug</button>
+            <button type="button" class="btn-issue-tag" data-tag="Mechanism Failure">⚠️ Mechanism Failure</button>
+          </div>
+        </div>
+
+        <!-- Detailed Notes & Why It Failed -->
+        <div class="meta-section-card">
+          <div class="form-group">
+            <label for="autonNotesInput">Auton Breakdown: What went wrong and why?</label>
+            <textarea id="autonNotesInput" class="form-textarea" rows="4" placeholder="e.g. Robot caught the corner of the center goal on step 3 because inertial sensor zeroed 2 degrees off. Missed the second ring on the high stake. Adjust start jig and PID threshold."></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-footer-actions">
+        <span class="autosave-footer-note">✓ Auto-saves instantly</span>
+        <button class="btn btn-primary" data-close="autonReviewModal">Done</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 5. Keyboard Shortcuts Cheat Sheet Modal -->
+  <div id="shortcutsModal" class="modal-backdrop hidden">
+    <div class="modal-dialog">
+      <div class="modal-header">
+        <h3>⌨️ Keyboard Shortcuts Cheat Sheet</h3>
+        <button class="modal-close-btn" data-close="shortcutsModal">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="shortcuts-grid">
+          <div class="shortcut-group">
+            <h4>Playback & Scrubbing</h4>
+            <div class="shortcut-item"><kbd>Space</kbd> <span>Play / Pause</span></div>
+            <div class="shortcut-item"><kbd>←</kbd> / <kbd>,</kbd> <span>Step 1 frame backward</span></div>
+            <div class="shortcut-item"><kbd>→</kbd> / <kbd>.</kbd> <span>Step 1 frame forward</span></div>
+            <div class="shortcut-item"><kbd>J</kbd> <span>Jump 1 second backward</span></div>
+            <div class="shortcut-item"><kbd>L</kbd> <span>Jump 1 second forward</span></div>
+            <div class="shortcut-item"><kbd>Shift</kbd> + <kbd>←</kbd> <span>Jump 5 seconds backward</span></div>
+            <div class="shortcut-item"><kbd>Shift</kbd> + <kbd>→</kbd> <span>Jump 5 seconds forward</span></div>
+          </div>
+          <div class="shortcut-group">
+            <h4>Tagging Maneuvers</h4>
+            <div class="shortcut-item"><kbd>[</kbd> or <kbd>I</kbd> <span>Set Start Time (In-point)</span></div>
+            <div class="shortcut-item"><kbd>]</kbd> or <kbd>O</kbd> <span>Set End Time (Out-point)</span></div>
+            <div class="shortcut-item"><kbd>Enter</kbd> <span>Save current maneuver</span></div>
+            <div class="shortcut-item"><kbd>R</kbd> <span>Loop / Preview current interval</span></div>
+            <div class="shortcut-item"><kbd>Esc</kbd> <span>Close open modal / Clear markers</span></div>
+            <div class="shortcut-item"><kbd>?</kbd> <span>Toggle this shortcuts modal</span></div>
+          </div>
+        </div>
+        <div class="modal-footer-actions" style="margin-top: 1rem;">
+          <button class="btn btn-primary btn-sm" data-close="shortcutsModal">Got it</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Audio feedback or hidden elements -->
+  <script src="app.js"></script>
+</body>
+</html>
